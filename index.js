@@ -10,18 +10,17 @@ import { URL } from 'url';
 import dns from 'dns';
 import net from 'net';
 import dotenv from 'dotenv';
-const OpenAI = require('openai');
+import OpenAI from 'openai';
+
+dotenv.config();
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-dotenv.config();
 
 // Define __dirname in ES module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-
 
 // Generate a unique ID for the file name
 function generateUniqueId() {
@@ -122,7 +121,7 @@ async function checkSecurity(url) {
     };
 }
 
-// Function to save report in "Reports" folder
+// Function to save report in "Reports" folder and append an OpenAI summary
 async function saveReportToFile(report, url) {
     const uniqueId = generateUniqueId();
     const reportsDir = path.join(__dirname, 'Reports');
@@ -137,17 +136,46 @@ async function saveReportToFile(report, url) {
 
     try {
         const reportContent = formatReport(report, url);
+
+        // Save the report first
         fs.writeFileSync(filePath, reportContent, 'utf8');
         console.log(`Report saved to ${filePath}`);
+
+        // Generate OpenAI summary and append it to the report
+        const summary = await generateSummary(reportContent);
+        if (summary) {
+            fs.appendFileSync(filePath, `\n## OpenAI Summary\n${summary}`, 'utf8');
+            console.log('Summary appended to the report.');
+        }
+
     } catch (error) {
         console.error('Error saving report to file:', error);
+    }
+}
+
+// Function to generate a summary using OpenAI
+async function generateSummary(reportContent) {
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    role: "user",
+                    content: `Summarize the following website audit report:\n\n${reportContent}`,
+                },
+            ],
+        });
+
+        return response.choices[0]?.message?.content || "No summary available.";
+    } catch (error) {
+        console.error('OpenAI API error:', error);
+        return null;
     }
 }
 
 function formatReport(report, url) {
     const recommendations = [];
 
-    // Add some recommendations based on scores
     if (report.lighthouse.performanceScore < 90) {
         recommendations.push('Consider optimizing images and reducing JavaScript to improve performance.');
     }
@@ -159,7 +187,7 @@ function formatReport(report, url) {
     }
 
     const simplifiedAudits = Object.values(report.lighthouse.audits)
-        .filter(audit => audit.score < 0.9)  // Only show audits with score < 90%
+        .filter(audit => audit.score < 0.9)
         .map(audit => ({
             title: audit.title,
             description: audit.description,
