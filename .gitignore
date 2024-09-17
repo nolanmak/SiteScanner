@@ -1,0 +1,5 @@
+# Ignore the Reports folder
+Reports/
+
+# Ignore the .env file
+.env

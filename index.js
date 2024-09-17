@@ -9,10 +9,19 @@ import https from 'https';
 import { URL } from 'url';
 import dns from 'dns';
 import net from 'net';
+import dotenv from 'dotenv';
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+dotenv.config();
 
 // Define __dirname in ES module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+
 
 // Generate a unique ID for the file name
 function generateUniqueId() {
@@ -113,85 +122,93 @@ async function checkSecurity(url) {
     };
 }
 
+// Function to save report in "Reports" folder
 async function saveReportToFile(report, url) {
     const uniqueId = generateUniqueId();
-    const fileName = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_${uniqueId}.txt`;
-    const filePath = path.join(__dirname, fileName);
+    const reportsDir = path.join(__dirname, 'Reports');
+
+    // Ensure the Reports directory exists
+    if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir);
+    }
+
+    const fileName = `${url.replace(/[^a-zA-Z0-9]/g, '_')}_${uniqueId}.md`;
+    const filePath = path.join(reportsDir, fileName);
 
     try {
-        fs.writeFileSync(filePath, JSON.stringify(report, null, 2), 'utf8');
+        const reportContent = formatReport(report, url);
+        fs.writeFileSync(filePath, reportContent, 'utf8');
         console.log(`Report saved to ${filePath}`);
     } catch (error) {
         console.error('Error saving report to file:', error);
     }
 }
 
-// async function auditWebsite(inputUrl) {
-//     try {
-//         let url;
+function formatReport(report, url) {
+    const recommendations = [];
 
-//         // Attempt to create a valid URL, adding "https://" if necessary
-//         try {
-//             if (!/^https?:\/\//i.test(inputUrl)) {
-//                 inputUrl = `https://${inputUrl}`;
-//             }
+    // Add some recommendations based on scores
+    if (report.lighthouse.performanceScore < 90) {
+        recommendations.push('Consider optimizing images and reducing JavaScript to improve performance.');
+    }
+    if (report.lighthouse.accessibilityScore < 90) {
+        recommendations.push('Review accessibility issues and apply fixes from the Pa11y results.');
+    }
+    if (!report.security.httpsRedirect) {
+        recommendations.push('Ensure that HTTP traffic is redirected to HTTPS.');
+    }
 
-//             // Use the URL constructor to validate the input
-//             url = new URL(inputUrl);
-//         } catch (err) {
-//             console.error('Invalid URL:', inputUrl);
-//             process.exit(1);  // Exit if URL is invalid
-//         }
+    const simplifiedAudits = Object.values(report.lighthouse.audits)
+        .filter(audit => audit.score < 0.9)  // Only show audits with score < 90%
+        .map(audit => ({
+            title: audit.title,
+            description: audit.description,
+            score: audit.score * 100
+        }));
 
-//         console.log(`Auditing website: ${url.href}`);
-//         const lighthouseResults = await runLighthouse(url.href);
-//         const pa11yResults = await runPa11y(url.href);
-//         const securityResults = await checkSecurity(url.href);
+    return `
+# Website Audit Report for: ${url}
 
-//         const finalReport = {
-//             url: url.href,
-//             lighthouse: lighthouseResults,
-//             pa11y: pa11yResults ? pa11yResults.issues : null,
-//             security: securityResults
-//         };
+## Summary
+- **SEO Score**: ${report.lighthouse.seoScore}
+- **Accessibility Score**: ${report.lighthouse.accessibilityScore}
+- **Performance Score**: ${report.lighthouse.performanceScore}
+- **Best Practices Score**: ${report.lighthouse.bestPracticesScore}
 
-//         await saveReportToFile(finalReport, url.href);
-//         console.log('Audit complete. Check the generated text file for results.');
+## Recommendations:
+${recommendations.length ? recommendations.map(r => `- ${r}`).join('\n') : 'No major issues found.'}
 
-//         // Exit the process successfully
-//         process.exit(0);
-//     } catch (error) {
-//         console.error('Error auditing website:', error);
-//         process.exit(1);  // Exit with an error code in case of failure
-//     }
-// }
+## Detailed Report
+
+### Lighthouse Audit Details
+${simplifiedAudits.map(audit => `- **${audit.title}**: ${audit.description} (Score: ${audit.score})`).join('\n')}
+
+### Pa11y Accessibility Issues
+${report.pa11y.length ? report.pa11y.map(issue => `- ${issue.message} (${issue.code})`).join('\n') : 'No accessibility issues found.'}
+
+### Security Checks
+- **HTTPS Redirect**: ${report.security.httpsRedirect ? 'Passed' : 'Failed'}
+- **Open Ports**: 
+${report.security.openPorts.map(portStatus => `  - ${portStatus}`).join('\n')}
+- **DNS TXT Records**: ${report.security.dnsRecords ? report.security.dnsRecords.join('\n') : 'No DNS TXT records found'}
+
+`;
+}
 
 function formatUrl(inputUrl) {
-    // Debug log to check initial URL
     console.log('Initial URL:', inputUrl);
-
-    // Trim any leading or trailing spaces
     inputUrl = inputUrl.trim();
-
-    // Add https:// if not present
     if (!/^https?:\/\//i.test(inputUrl)) {
         inputUrl = `https://${inputUrl}`;
     }
-
-    // Debug log to check URL after adding https://
     console.log('URL after adding https://:', inputUrl);
 
     try {
         const url = new URL(inputUrl);
-
-        // Add trailing slash only if the pathname is empty or just a "/"
         if (url.pathname === '' || url.pathname === '/') {
             url.pathname = '/';
         }
-        
-        // Debug log to check the final formatted URL
         console.log('Formatted URL:', url.href);
-
         return url.href;
     } catch (err) {
         console.error('Invalid URL:', inputUrl);
@@ -211,18 +228,16 @@ async function auditWebsite(inputUrl) {
         const finalReport = {
             url: formattedUrl,
             lighthouse: lighthouseResults,
-            pa11y: pa11yResults ? pa11yResults.issues : null,
+            pa11y: pa11yResults ? pa11yResults.issues : [],
             security: securityResults
         };
 
         await saveReportToFile(finalReport, formattedUrl);
-        console.log('Audit complete. Check the generated text file for results.');
-
-        // Exit the process successfully
+        console.log('Audit complete. Check the generated markdown file for results.');
         process.exit(0);
     } catch (error) {
         console.error('Error auditing website:', error);
-        process.exit(1);  // Exit with an error code in case of failure
+        process.exit(1);
     }
 }
 
@@ -232,4 +247,3 @@ if (!url) {
     process.exit(1);
 }
 auditWebsite(url);
-
