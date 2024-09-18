@@ -368,4 +368,4 @@ if (!url) {
     console.error('Please provide a URL to audit.');
     process.exit(1);
 }
-auditWebsite(url);
+auditWebsite(url);  
