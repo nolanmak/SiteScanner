@@ -30,20 +30,45 @@ function generateUniqueId() {
 async function runLighthouse(url) {
     try {
         const chrome = await launch({ chromeFlags: ['--headless'] });
-        const options = { logLevel: 'info', output: 'json', port: chrome.port };
-        const runnerResult = await lighthouse(url, options);
-        const lighthouseReport = runnerResult.lhr;
-
-        const detailedReport = {
-            seoScore: lighthouseReport.categories.seo.score * 100,
-            accessibilityScore: lighthouseReport.categories.accessibility.score * 100,
-            performanceScore: lighthouseReport.categories.performance.score * 100,
-            bestPracticesScore: lighthouseReport.categories['best-practices'].score * 100,
-            audits: lighthouseReport.audits
+        
+        // Define device emulations (mobile and desktop)
+        const deviceProfiles = {
+            mobile: { formFactor: 'mobile', screenEmulation: { disabled: false } },
+            desktop: { formFactor: 'desktop', screenEmulation: { disabled: true } }
         };
 
+        // Iterate through both device profiles (mobile and desktop)
+        const results = {};
+        for (const [deviceType, config] of Object.entries(deviceProfiles)) {
+            const options = { logLevel: 'info', output: 'json', port: chrome.port, ...config };
+            const runnerResult = await lighthouse(url, options);
+            const lighthouseReport = runnerResult.lhr;
+
+            // Core Web Vitals metrics: LCP, FID, CLS
+            const coreWebVitals = {
+                lcp: lighthouseReport.audits['largest-contentful-paint'].displayValue,
+                fid: lighthouseReport.audits['max-potential-fid'].displayValue,
+                cls: lighthouseReport.audits['cumulative-layout-shift'].displayValue
+            };
+
+            results[deviceType] = {
+                seoScore: lighthouseReport.categories.seo.score * 100,
+                accessibilityScore: lighthouseReport.categories.accessibility.score * 100,
+                performanceScore: lighthouseReport.categories.performance.score * 100,
+                bestPracticesScore: lighthouseReport.categories['best-practices'].score * 100,
+                metrics: {
+                    firstContentfulPaint: lighthouseReport.audits['first-contentful-paint'].displayValue,
+                    largestContentfulPaint: lighthouseReport.audits['largest-contentful-paint'].displayValue,
+                    timeToInteractive: lighthouseReport.audits['interactive'].displayValue,
+                    cumulativeLayoutShift: lighthouseReport.audits['cumulative-layout-shift'].displayValue
+                },
+                coreWebVitals,
+                audits: lighthouseReport.audits
+            };
+        }
+
         await chrome.kill();
-        return detailedReport;
+        return results;
     } catch (error) {
         console.error('Error running Lighthouse:', error);
         return null;
@@ -99,8 +124,8 @@ async function checkOpenPorts(hostname) {
 async function checkDNSRecords(hostname) {
     return new Promise((resolve) => {
         dns.resolveTxt(hostname, (err, records) => {
-            if (err) {
-                resolve('No TXT records found or error in lookup');
+            if (err || !Array.isArray(records)) {
+                resolve([]);  // Return an empty array if no records are found or if there is an error
             } else {
                 resolve(records);
             }
@@ -121,7 +146,7 @@ async function checkSecurity(url) {
     };
 }
 
-// Function to save report in "Reports" folder and append an OpenAI summary
+// Function to save report in "Reports" folder
 async function saveReportToFile(report, url) {
     const uniqueId = generateUniqueId();
     const reportsDir = path.join(__dirname, 'Reports');
@@ -135,58 +160,33 @@ async function saveReportToFile(report, url) {
     const filePath = path.join(reportsDir, fileName);
 
     try {
-        const reportContent = formatReport(report, url);
-
-        // Save the report first
+        const reportContent = await formatReport(report, url);
         fs.writeFileSync(filePath, reportContent, 'utf8');
         console.log(`Report saved to ${filePath}`);
-
-        // Generate OpenAI summary and append it to the report
-        const summary = await generateSummary(reportContent);
-        if (summary) {
-            fs.appendFileSync(filePath, `\n## OpenAI Summary\n${summary}`, 'utf8');
-            console.log('Summary appended to the report.');
-        }
-
     } catch (error) {
         console.error('Error saving report to file:', error);
     }
 }
 
-// Function to generate a summary using OpenAI
-async function generateSummary(reportContent) {
-    try {
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "user",
-                    content: `Summarize the following website audit report:\n\n${reportContent}`,
-                },
-            ],
-        });
-
-        return response.choices[0]?.message?.content || "No summary available.";
-    } catch (error) {
-        console.error('OpenAI API error:', error);
-        return null;
-    }
-}
-
-function formatReport(report, url) {
+async function formatReport(report, url) {
     const recommendations = [];
 
-    if (report.lighthouse.performanceScore < 90) {
-        recommendations.push('Consider optimizing images and reducing JavaScript to improve performance.');
+    const mobileMetrics = report.lighthouse.mobile.metrics;
+    const desktopMetrics = report.lighthouse.desktop.metrics;
+
+    // Add performance recommendations based on device
+    if (report.lighthouse.mobile.performanceScore < 90) {
+        recommendations.push('Mobile: Optimize images, reduce JavaScript, and improve time to interactive.');
     }
-    if (report.lighthouse.accessibilityScore < 90) {
-        recommendations.push('Review accessibility issues and apply fixes from the Pa11y results.');
-    }
-    if (!report.security.httpsRedirect) {
-        recommendations.push('Ensure that HTTP traffic is redirected to HTTPS.');
+    if (report.lighthouse.desktop.performanceScore < 90) {
+        recommendations.push('Desktop: Optimize images, reduce JavaScript, and improve time to interactive.');
     }
 
-    const simplifiedAudits = Object.values(report.lighthouse.audits)
+    // Including Core Web Vitals in the report
+    const mobileCoreWebVitals = report.lighthouse.mobile.coreWebVitals;
+    const desktopCoreWebVitals = report.lighthouse.desktop.coreWebVitals;
+
+    const simplifiedAudits = Object.values(report.lighthouse.mobile.audits)
         .filter(audit => audit.score < 0.9)
         .map(audit => ({
             title: audit.title,
@@ -194,14 +194,41 @@ function formatReport(report, url) {
             score: audit.score * 100
         }));
 
-    return `
-# Website Audit Report for: ${url}
+    let reportContent = 
+`# Website Audit Report for: ${url}
 
 ## Summary
-- **SEO Score**: ${report.lighthouse.seoScore}
-- **Accessibility Score**: ${report.lighthouse.accessibilityScore}
-- **Performance Score**: ${report.lighthouse.performanceScore}
-- **Best Practices Score**: ${report.lighthouse.bestPracticesScore}
+- **Mobile SEO Score**: ${report.lighthouse.mobile.seoScore}
+- **Mobile Accessibility Score**: ${report.lighthouse.mobile.accessibilityScore}
+- **Mobile Performance Score**: ${report.lighthouse.mobile.performanceScore}
+- **Mobile Best Practices Score**: ${report.lighthouse.mobile.bestPracticesScore}
+- **Desktop SEO Score**: ${report.lighthouse.desktop.seoScore}
+- **Desktop Accessibility Score**: ${report.lighthouse.desktop.accessibilityScore}
+- **Desktop Performance Score**: ${report.lighthouse.desktop.performanceScore}
+- **Desktop Best Practices Score**: ${report.lighthouse.desktop.bestPracticesScore}
+
+## Detailed Performance Metrics
+### Mobile:
+- **First Contentful Paint (FCP)**: ${mobileMetrics.firstContentfulPaint}
+- **Largest Contentful Paint (LCP)**: ${mobileMetrics.largestContentfulPaint}
+- **Time to Interactive (TTI)**: ${mobileMetrics.timeToInteractive}
+- **Cumulative Layout Shift (CLS)**: ${mobileMetrics.cumulativeLayoutShift}
+
+#### Core Web Vitals (Mobile)
+- **Largest Contentful Paint (LCP)**: ${mobileCoreWebVitals.lcp}
+- **First Input Delay (FID)**: ${mobileCoreWebVitals.fid}
+- **Cumulative Layout Shift (CLS)**: ${mobileCoreWebVitals.cls}
+
+### Desktop:
+- **First Contentful Paint (FCP)**: ${desktopMetrics.firstContentfulPaint}
+- **Largest Contentful Paint (LCP)**: ${desktopMetrics.largestContentfulPaint}
+- **Time to Interactive (TTI)**: ${desktopMetrics.timeToInteractive}
+- **Cumulative Layout Shift (CLS)**: ${desktopMetrics.cumulativeLayoutShift}
+
+#### Core Web Vitals (Desktop)
+- **Largest Contentful Paint (LCP)**: ${desktopCoreWebVitals.lcp}
+- **First Input Delay (FID)**: ${desktopCoreWebVitals.fid}
+- **Cumulative Layout Shift (CLS)**: ${desktopCoreWebVitals.cls}
 
 ## Recommendations:
 ${recommendations.length ? recommendations.map(r => `- ${r}`).join('\n') : 'No major issues found.'}
@@ -218,9 +245,29 @@ ${report.pa11y.length ? report.pa11y.map(issue => `- ${issue.message} (${issue.c
 - **HTTPS Redirect**: ${report.security.httpsRedirect ? 'Passed' : 'Failed'}
 - **Open Ports**: 
 ${report.security.openPorts.map(portStatus => `  - ${portStatus}`).join('\n')}
-- **DNS TXT Records**: ${report.security.dnsRecords ? report.security.dnsRecords.join('\n') : 'No DNS TXT records found'}
-
+- **DNS TXT Records**: ${report.security.dnsRecords.length ? report.security.dnsRecords.map(record => record.join(' ')).join('\n') : 'No DNS TXT records found'}
 `;
+
+
+    // Generate OpenAI summary
+    try {
+        const TextAnalysisPrompt = `Summarize the following website audit report:\n\n${reportContent}`;
+        const TextAnalysisResponse = await openai.chat.completions.create({
+            model: "gpt-4",
+            messages: [
+                {
+                    role: "user",
+                    content: TextAnalysisPrompt,
+                },
+            ],
+        });
+
+        const summary = TextAnalysisResponse.choices[0].message.content;
+        return `${reportContent}\n\n## Summary by OpenAI\n${summary}`;
+    } catch (error) {
+        console.error('OpenAI API error:', error);
+        return reportContent;  // Return the report content without summary if there is an error
+    }
 }
 
 function formatUrl(inputUrl) {

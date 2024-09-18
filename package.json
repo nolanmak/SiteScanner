@@ -10,12 +10,15 @@
   "type": "module",
   "license": "ISC",
   "dependencies": {
+    "axe-core": "^4.10.0",
     "chrome-launcher": "^1.1.2",
     "dotenv": "^16.4.5",
     "lighthouse": "^12.2.1",
     "openai": "^4.62.0",
     "pa11y": "^8.0.0",
     "pally": "^0.2.3",
-    "seo-checker": "^0.3.2"
+    "puppeteer": "^23.3.1",
+    "seo-checker": "^0.3.2",
+    "snyk": "^1.1293.1"
   }
 }
