@@ -11,6 +11,9 @@ import dns from 'dns';
 import net from 'net';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
+import puppeteer from 'puppeteer';
+import pkg from 'axe-core';
+const { source, run } = pkg;  
 
 dotenv.config();
 
@@ -171,22 +174,22 @@ async function saveReportToFile(report, url) {
 async function formatReport(report, url) {
     const recommendations = [];
 
-    const mobileMetrics = report.lighthouse.mobile.metrics;
-    const desktopMetrics = report.lighthouse.desktop.metrics;
+    const mobileMetrics = report.lighthouse?.mobile?.metrics || {};
+    const desktopMetrics = report.lighthouse?.desktop?.metrics || {};
 
     // Add performance recommendations based on device
-    if (report.lighthouse.mobile.performanceScore < 90) {
+    if (report.lighthouse?.mobile?.performanceScore < 90) {
         recommendations.push('Mobile: Optimize images, reduce JavaScript, and improve time to interactive.');
     }
-    if (report.lighthouse.desktop.performanceScore < 90) {
+    if (report.lighthouse?.desktop?.performanceScore < 90) {
         recommendations.push('Desktop: Optimize images, reduce JavaScript, and improve time to interactive.');
     }
 
     // Including Core Web Vitals in the report
-    const mobileCoreWebVitals = report.lighthouse.mobile.coreWebVitals;
-    const desktopCoreWebVitals = report.lighthouse.desktop.coreWebVitals;
+    const mobileCoreWebVitals = report.lighthouse?.mobile?.coreWebVitals || {};
+    const desktopCoreWebVitals = report.lighthouse?.desktop?.coreWebVitals || {};
 
-    const simplifiedAudits = Object.values(report.lighthouse.mobile.audits)
+    const simplifiedAudits = Object.values(report.lighthouse?.mobile?.audits || [])
         .filter(audit => audit.score < 0.9)
         .map(audit => ({
             title: audit.title,
@@ -198,37 +201,37 @@ async function formatReport(report, url) {
 `# Website Audit Report for: ${url}
 
 ## Summary
-- **Mobile SEO Score**: ${report.lighthouse.mobile.seoScore}
-- **Mobile Accessibility Score**: ${report.lighthouse.mobile.accessibilityScore}
-- **Mobile Performance Score**: ${report.lighthouse.mobile.performanceScore}
-- **Mobile Best Practices Score**: ${report.lighthouse.mobile.bestPracticesScore}
-- **Desktop SEO Score**: ${report.lighthouse.desktop.seoScore}
-- **Desktop Accessibility Score**: ${report.lighthouse.desktop.accessibilityScore}
-- **Desktop Performance Score**: ${report.lighthouse.desktop.performanceScore}
-- **Desktop Best Practices Score**: ${report.lighthouse.desktop.bestPracticesScore}
+- **Mobile SEO Score**: ${report.lighthouse?.mobile?.seoScore || 'N/A'}
+- **Mobile Accessibility Score**: ${report.lighthouse?.mobile?.accessibilityScore || 'N/A'}
+- **Mobile Performance Score**: ${report.lighthouse?.mobile?.performanceScore || 'N/A'}
+- **Mobile Best Practices Score**: ${report.lighthouse?.mobile?.bestPracticesScore || 'N/A'}
+- **Desktop SEO Score**: ${report.lighthouse?.desktop?.seoScore || 'N/A'}
+- **Desktop Accessibility Score**: ${report.lighthouse?.desktop?.accessibilityScore || 'N/A'}
+- **Desktop Performance Score**: ${report.lighthouse?.desktop?.performanceScore || 'N/A'}
+- **Desktop Best Practices Score**: ${report.lighthouse?.desktop?.bestPracticesScore || 'N/A'}
 
 ## Detailed Performance Metrics
 ### Mobile:
-- **First Contentful Paint (FCP)**: ${mobileMetrics.firstContentfulPaint}
-- **Largest Contentful Paint (LCP)**: ${mobileMetrics.largestContentfulPaint}
-- **Time to Interactive (TTI)**: ${mobileMetrics.timeToInteractive}
-- **Cumulative Layout Shift (CLS)**: ${mobileMetrics.cumulativeLayoutShift}
+- **First Contentful Paint (FCP)**: ${mobileMetrics.firstContentfulPaint || 'N/A'}
+- **Largest Contentful Paint (LCP)**: ${mobileMetrics.largestContentfulPaint || 'N/A'}
+- **Time to Interactive (TTI)**: ${mobileMetrics.timeToInteractive || 'N/A'}
+- **Cumulative Layout Shift (CLS)**: ${mobileMetrics.cumulativeLayoutShift || 'N/A'}
 
 #### Core Web Vitals (Mobile)
-- **Largest Contentful Paint (LCP)**: ${mobileCoreWebVitals.lcp}
-- **First Input Delay (FID)**: ${mobileCoreWebVitals.fid}
-- **Cumulative Layout Shift (CLS)**: ${mobileCoreWebVitals.cls}
+- **Largest Contentful Paint (LCP)**: ${mobileCoreWebVitals.lcp || 'N/A'}
+- **First Input Delay (FID)**: ${mobileCoreWebVitals.fid || 'N/A'}
+- **Cumulative Layout Shift (CLS)**: ${mobileCoreWebVitals.cls || 'N/A'}
 
 ### Desktop:
-- **First Contentful Paint (FCP)**: ${desktopMetrics.firstContentfulPaint}
-- **Largest Contentful Paint (LCP)**: ${desktopMetrics.largestContentfulPaint}
-- **Time to Interactive (TTI)**: ${desktopMetrics.timeToInteractive}
-- **Cumulative Layout Shift (CLS)**: ${desktopMetrics.cumulativeLayoutShift}
+- **First Contentful Paint (FCP)**: ${desktopMetrics.firstContentfulPaint || 'N/A'}
+- **Largest Contentful Paint (LCP)**: ${desktopMetrics.largestContentfulPaint || 'N/A'}
+- **Time to Interactive (TTI)**: ${desktopMetrics.timeToInteractive || 'N/A'}
+- **Cumulative Layout Shift (CLS)**: ${desktopMetrics.cumulativeLayoutShift || 'N/A'}
 
 #### Core Web Vitals (Desktop)
-- **Largest Contentful Paint (LCP)**: ${desktopCoreWebVitals.lcp}
-- **First Input Delay (FID)**: ${desktopCoreWebVitals.fid}
-- **Cumulative Layout Shift (CLS)**: ${desktopCoreWebVitals.cls}
+- **Largest Contentful Paint (LCP)**: ${desktopCoreWebVitals.lcp || 'N/A'}
+- **First Input Delay (FID)**: ${desktopCoreWebVitals.fid || 'N/A'}
+- **Cumulative Layout Shift (CLS)**: ${desktopCoreWebVitals.cls || 'N/A'}
 
 ## Recommendations:
 ${recommendations.length ? recommendations.map(r => `- ${r}`).join('\n') : 'No major issues found.'}
@@ -236,18 +239,17 @@ ${recommendations.length ? recommendations.map(r => `- ${r}`).join('\n') : 'No m
 ## Detailed Report
 
 ### Lighthouse Audit Details
-${simplifiedAudits.map(audit => `- **${audit.title}**: ${audit.description} (Score: ${audit.score})`).join('\n')}
+${simplifiedAudits.length ? simplifiedAudits.map(audit => `- **${audit.title}**: ${audit.description} (Score: ${audit.score})`).join('\n') : 'No audit issues found.'}
 
 ### Pa11y Accessibility Issues
-${report.pa11y.length ? report.pa11y.map(issue => `- ${issue.message} (${issue.code})`).join('\n') : 'No accessibility issues found.'}
+${report.pa11y?.length ? report.pa11y.map(issue => `- ${issue.message} (${issue.code})`).join('\n') : 'No accessibility issues found.'}
 
 ### Security Checks
-- **HTTPS Redirect**: ${report.security.httpsRedirect ? 'Passed' : 'Failed'}
+- **HTTPS Redirect**: ${report.security?.httpsRedirect ? 'Passed' : 'Failed'}
 - **Open Ports**: 
-${report.security.openPorts.map(portStatus => `  - ${portStatus}`).join('\n')}
-- **DNS TXT Records**: ${report.security.dnsRecords.length ? report.security.dnsRecords.map(record => record.join(' ')).join('\n') : 'No DNS TXT records found'}
+${report.security?.openPorts?.length ? report.security.openPorts.map(portStatus => `  - ${portStatus}`).join('\n') : 'No open port data found.'}
+- **DNS TXT Records**: ${report.security?.dnsRecords?.length ? report.security.dnsRecords.map(record => record.join(' ')).join('\n') : 'No DNS TXT records found'}
 `;
-
 
     // Generate OpenAI summary
     try {
@@ -269,7 +271,6 @@ ${report.security.openPorts.map(portStatus => `  - ${portStatus}`).join('\n')}
         return reportContent;  // Return the report content without summary if there is an error
     }
 }
-
 function formatUrl(inputUrl) {
     console.log('Initial URL:', inputUrl);
     inputUrl = inputUrl.trim();
@@ -291,6 +292,47 @@ function formatUrl(inputUrl) {
     }
 }
 
+async function runAxeCore(url) {
+    try {
+        // Launch puppeteer browser and go to the URL
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        await page.goto(url);
+
+        // Inject axe-core script into the page
+        await page.evaluate(source);
+
+        // Run axe-core within the page context
+        const axeResults = await page.evaluate(async () => {
+            return await window.axe.run();
+        });
+
+        await browser.close();
+        return axeResults.violations;
+    } catch (error) {
+        console.error('Error running axe-core:', error);
+        return [];
+    }
+}
+
+// Generate prioritized recommendations
+function generatePriorityRecommendations(issues) {
+    const severityMap = {
+        "critical": 1,
+        "serious": 2,
+        "moderate": 3,
+        "minor": 4
+    };
+
+    const sortedIssues = issues.sort((a, b) => severityMap[a.severity] - severityMap[b.severity]);
+
+    return sortedIssues.map(issue => ({
+        description: issue.description,
+        impact: issue.impact,
+        helpUrl: issue.helpUrl
+    }));
+}
+
 async function auditWebsite(inputUrl) {
     try {
         const formattedUrl = formatUrl(inputUrl);
@@ -298,12 +340,17 @@ async function auditWebsite(inputUrl) {
 
         const lighthouseResults = await runLighthouse(formattedUrl);
         const pa11yResults = await runPa11y(formattedUrl);
+        const axeCoreResults = await runAxeCore(formattedUrl); // New axe-core results
         const securityResults = await checkSecurity(formattedUrl);
+
+        // Combine Pa11y and axe-core results and prioritize issues
+        const combinedAccessibilityIssues = [...pa11yResults.issues, ...axeCoreResults];
+        const prioritizedRecommendations = generatePriorityRecommendations(combinedAccessibilityIssues);
 
         const finalReport = {
             url: formattedUrl,
             lighthouse: lighthouseResults,
-            pa11y: pa11yResults ? pa11yResults.issues : [],
+            accessibilityIssues: prioritizedRecommendations, // Include prioritized issues
             security: securityResults
         };
 
