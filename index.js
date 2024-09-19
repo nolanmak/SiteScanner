@@ -255,7 +255,7 @@ ${report.security?.openPorts?.length ? report.security.openPorts.map(portStatus 
     try {
         const TextAnalysisPrompt = `Summarize the following website audit report:\n\n${reportContent}`;
         const TextAnalysisResponse = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-4o",
             messages: [
                 {
                     role: "user",
