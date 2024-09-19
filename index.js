@@ -340,7 +340,7 @@ async function auditWebsite(inputUrl) {
 
         const lighthouseResults = await runLighthouse(formattedUrl);
         const pa11yResults = await runPa11y(formattedUrl);
-        const axeCoreResults = await runAxeCore(formattedUrl); // New axe-core results
+        const axeCoreResults = await runAxeCore(formattedUrl); 
         const securityResults = await checkSecurity(formattedUrl);
 
         // Combine Pa11y and axe-core results and prioritize issues
