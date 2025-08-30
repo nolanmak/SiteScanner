@@ -1,7 +1,7 @@
 color: true
 reporter: apiary
 custom:
-  apiaryApiKey: e215c372cc588d69f8ee8e571a7d1a27
+  apiaryApiKey: 
   apiaryApiName: websitescanner
 dry-run: null
 hookfiles: null
