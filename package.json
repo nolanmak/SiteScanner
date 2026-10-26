@@ -10,16 +10,16 @@
   "type": "module",
   "license": "ISC",
   "dependencies": {
-    "axe-core": "^4.10.0",
-    "chrome-launcher": "^1.1.2",
-    "dotenv": "^16.4.5",
-    "lighthouse": "^12.2.1",
-    "openai": "^4.62.0",
-    "pa11y": "^8.0.0",
+    "axe-core": "^4.14.0",
+    "chrome-launcher": "^1.2.2",
+    "dotenv": "^18.0.8",
+    "lighthouse": "^13.5.0",
+    "openai": "^7.39.0",
+    "pa11y": "^10.0.0",
     "pally": "^0.2.3",
-    "puppeteer": "^23.4.0",
+    "puppeteer": "^25.14.0",
     "seo-checker": "^0.3.2",
-    "snyk": "^1.1293.1",
-    "ssl-checker": "^2.0.10"
+    "snyk": "^1.1308.1",
+    "ssl-checker": "^3.0.1"
   }
 }
